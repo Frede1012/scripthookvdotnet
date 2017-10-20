@@ -14,7 +14,7 @@ namespace GTA.UI
 		/// <param name="message">The message in the notification.</param>
 		/// <param name="blinking">if set to <c>true</c> the notification will blink.</param>
 		/// <returns>The handle of the <see cref="Notification"/> which can be used to hide it using <see cref="Notification.Hide(int)"/>.</returns>
-		public static int ShowSimple(string message, bool blinking = false)
+		public static int Show(string message, bool blinking = false)
 		{
 			Function.Call(Hash._SET_NOTIFICATION_TEXT_ENTRY, "CELL_EMAIL_BCON");
 
@@ -30,7 +30,7 @@ namespace GTA.UI
 
 		public static int Show(NotificationIcon icon, string title, string subtitle, string message, bool blinking = false)
 		{
-			Function.Call(Hash._SET_NOTIFICATION_TEXT_ENTRY, "STRING");
+			Function.Call(Hash._SET_NOTIFICATION_TEXT_ENTRY, "CELL_EMAIL_BCON");
 
 			const int maxStringLength = 99;
 
@@ -39,7 +39,7 @@ namespace GTA.UI
 				Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME, message.Substring(i, System.Math.Min(maxStringLength, message.Length - i)));
 			}
 
-			Function.Call(Hash._SET_NOTIFICATION_MESSAGE_2, "CHAR_" + icon.ToString(), "CHAR_" + icon.ToString(), false, 4, title, subtitle);
+			Function.Call(Hash._SET_NOTIFICATION_MESSAGE_4, "CHAR_DEFAULT", "CHAR_DEFAULT", false, 1, title, 0, 1.0F);
 
 			return Function.Call<int>(Hash._DRAW_NOTIFICATION, blinking, true);
 		}
