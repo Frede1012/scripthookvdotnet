@@ -28,9 +28,9 @@ namespace GTA.UI
 			return Function.Call<int>(Hash._DRAW_NOTIFICATION, blinking, true);
 		}
 
-		public static int Show(NotificationIcon icon, string title, string subtitle, string message, bool blinking = false)
+		public static int Show(NotificationIcon icon, string sender, string subject, string message, bool fadeIn, bool blinking = false)
 		{
-			Function.Call(Hash._SET_NOTIFICATION_TEXT_ENTRY, "CELL_EMAIL_BCON");
+			Function.Call(Hash._SET_NOTIFICATION_TEXT_ENTRY, "STRING");
 
 			const int maxStringLength = 99;
 
@@ -39,9 +39,9 @@ namespace GTA.UI
 				Function.Call(Hash.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME, message.Substring(i, System.Math.Min(maxStringLength, message.Length - i)));
 			}
 
-			Function.Call(Hash._SET_NOTIFICATION_MESSAGE_4, "CHAR_DEFAULT", "CHAR_DEFAULT", false, 1, title, 0, 1.0F);
+			Function.Call(Hash._SET_NOTIFICATION_MESSAGE_2, "CHAR_" + icon.ToString(), "CHAR_" + icon.ToString(), fadeIn, 1, sender, subject);
 
-			return Function.Call<int>(Hash._DRAW_NOTIFICATION, blinking, true);
+			return Function.Call<int>(Hash._DRAW_NOTIFICATION_4, blinking, true);
 		}
 
 		/// <summary>
