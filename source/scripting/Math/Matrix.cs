@@ -361,9 +361,9 @@ namespace GTA.Math
 					// Multiply by the matrix
 					for (int i = 0; i < 4; i++)
 					{
-						VTempX[i] = this[0, i];
-						VTempY[i] = this[1, i];
-						VTempZ[i] = this[2, i];
+						VTempX[i] *= this[0, i];
+						VTempY[i] *= this[1, i];
+						VTempZ[i] *= this[2, i];
 					}
 
 					// Add them all together
@@ -385,8 +385,7 @@ namespace GTA.Math
 		/// <returns>The original vertex location before being transformed by the given <see cref="Matrix"/></returns>
 		public Vector3 InverseTransformPoint(Vector3 vector)
 		{
-			Invert();
-			return TransformPoint(vector);
+			return Invert(this).TransformPoint(vector);
 		}
 
 		/// <summary>

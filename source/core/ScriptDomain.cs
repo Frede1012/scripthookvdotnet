@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Reflection;
 using System.Collections.Generic;
@@ -139,7 +140,7 @@ namespace GTA
 				{
 					filenameScripts.AddRange(Directory.GetFiles(path, "*.vb", SearchOption.AllDirectories));
 					filenameScripts.AddRange(Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories));
-					filenameAssemblies.AddRange(Directory.GetFiles(path, "*.dll", SearchOption.AllDirectories));
+					filenameAssemblies.AddRange(Directory.GetFiles(path, "*.dll", SearchOption.AllDirectories).Where(x => IsManagedAssembly(x)));
 				}
 				catch (Exception ex)
 				{
@@ -157,7 +158,7 @@ namespace GTA
 
 					try
 					{
-						if (AssemblyName.GetAssemblyName(filename).Name.StartsWith("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase))
+						if (assemblyName.Name.StartsWith("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase))
 						{
 							Log("[WARNING]", "Removing assembly file '", Path.GetFileName(filename), "'.");
 
@@ -279,13 +280,8 @@ namespace GTA
 
 			try
 			{
-				foreach (var type in assembly.GetTypes())
+				foreach (var type in assembly.GetTypes().Where(x => x.IsSubclassOf(typeof(Script))))
 				{
-					if (!type.IsSubclassOf(typeof(Script)))
-					{
-						continue;
-					}
-
 					count++;
 					_scriptTypes.Add(new Tuple<string, Type>(filename, type));
 				}
@@ -305,6 +301,69 @@ namespace GTA
 			Log("[INFO]", "Found ", count.ToString(), " script(s) in '", Path.GetFileName(filename), version, "'.");
 
 			return count != 0;
+		}
+		public static bool IsManagedAssembly(string fileName)
+		{
+			using (Stream fileStream = new FileStream(fileName, FileMode.Open, FileAccess.Read))
+			using (BinaryReader binaryReader = new BinaryReader(fileStream))
+			{
+				if (fileStream.Length < 64)
+				{
+					return false;
+				}
+
+				//PE Header starts @ 0x3C (60). Its a 4 byte header.
+				fileStream.Position = 0x3C;
+				uint peHeaderPointer = binaryReader.ReadUInt32();
+				if (peHeaderPointer == 0)
+				{
+					peHeaderPointer = 0x80;
+				}
+
+				// Ensure there is at least enough room for the following structures:
+				//     24 byte PE Signature & Header
+				//     28 byte Standard Fields         (24 bytes for PE32+)
+				//     68 byte NT Fields               (88 bytes for PE32+)
+				// >= 128 byte Data Dictionary Table
+				if (peHeaderPointer > fileStream.Length - 256)
+				{
+					return false;
+				}
+
+				// Check the PE signature.  Should equal 'PE\0\0'.
+				fileStream.Position = peHeaderPointer;
+				uint peHeaderSignature = binaryReader.ReadUInt32();
+				if (peHeaderSignature != 0x00004550)
+				{
+					return false;
+				}
+
+				// skip over the PEHeader fields
+				fileStream.Position += 20;
+
+				const ushort PE32 = 0x10b;
+				const ushort PE32Plus = 0x20b;
+
+				// Read PE magic number from Standard Fields to determine format.
+				var peFormat = binaryReader.ReadUInt16();
+				if (peFormat != PE32 && peFormat != PE32Plus)
+				{
+					return false;
+				}
+
+				// Read the 15th Data Dictionary RVA field which contains the CLI header RVA.
+				// When this is non-zero then the file contains CLI data otherwise not.
+				ushort dataDictionaryStart = (ushort)(peHeaderPointer + (peFormat == PE32 ? 232 : 248));
+				fileStream.Position = dataDictionaryStart;
+
+				uint cliHeaderRva = binaryReader.ReadUInt32();
+				if (cliHeaderRva == 0)
+				{
+					return false;
+				}
+
+				return true;
+			}
 		}
 		public static void Unload(ref ScriptDomain domain)
 		{
@@ -373,7 +432,7 @@ namespace GTA
 			{
 				var dependencies = new List<Type>();
 
-				foreach (RequireScript attribute in (scriptType.Item2).GetCustomAttributes(typeof(RequireScript), true))
+				foreach (RequireScript attribute in (scriptType.Item2).GetCustomAttributes<RequireScript>(true))
 				{
 					dependencies.Add(attribute._dependency);
 				}
@@ -385,29 +444,29 @@ namespace GTA
 
 			while (graph.Count > 0)
 			{
-				Tuple<string, Type> scriptype = null;
+				Tuple<string, Type> scriptType = null;
 
 				foreach (var item in graph)
 				{
 					if (item.Value.Count == 0)
 					{
-						scriptype = item.Key;
+						scriptType = item.Key;
 						break;
 					}
 				}
 
-				if (scriptype == null)
+				if (scriptType == null)
 				{
 					Log("[ERROR]", "Detected a circular script dependency. Aborting ...");
 					return false;
 				}
 
-				result.Add(scriptype);
-				graph.Remove(scriptype);
+				result.Add(scriptType);
+				graph.Remove(scriptType);
 
 				foreach (var item in graph)
 				{
-					item.Value.Remove(scriptype.Item2);
+					item.Value.Remove(scriptType.Item2);
 				}
 			}
 
@@ -433,15 +492,8 @@ namespace GTA
 				return;
 			}
 
-			for (int i = 0; i < _scriptTypes.Count; i++)
+			foreach (var script in _scriptTypes.Select(x => InstantiateScript(x.Item2)).Where(x => x != null))
 			{
-				Script script = InstantiateScript(_scriptTypes[i].Item2);
-
-				if (ReferenceEquals(script, null))
-				{
-					continue;
-				}
-
 				script.Start();
 			}
 		}
@@ -452,7 +504,14 @@ namespace GTA
 			int offset = _scriptTypes.Count;
 			string extension = Path.GetExtension(filename);
 
-			if (extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) ? !LoadAssembly(filename) : !LoadScript(filename))
+			if (extension.Equals(".dll", StringComparison.OrdinalIgnoreCase))
+			{
+				if (!(IsManagedAssembly(filename) && LoadAssembly(filename)))
+				{
+					return;
+				}
+			}
+			else if (!LoadScript(filename))
 			{
 				return;
 			}
@@ -483,7 +542,7 @@ namespace GTA
 				{
 					filenameScripts.AddRange(Directory.GetFiles(basedirectory, "*.vb", SearchOption.AllDirectories));
 					filenameScripts.AddRange(Directory.GetFiles(basedirectory, "*.cs", SearchOption.AllDirectories));
-					filenameScripts.AddRange(Directory.GetFiles(basedirectory, "*.dll", SearchOption.AllDirectories));
+					filenameScripts.AddRange(Directory.GetFiles(basedirectory, "*.dll", SearchOption.AllDirectories).Where(x => IsManagedAssembly(x)));
 				}
 				catch (Exception ex)
 				{
@@ -498,7 +557,7 @@ namespace GTA
 
 					if (extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) ? !LoadAssembly(filename) : !LoadScript(filename))
 					{
-						return;
+						continue;
 					}
 				}
 
@@ -541,29 +600,20 @@ namespace GTA
 		{
 			filename = Path.GetFullPath(filename);
 
-			foreach (Script script in _runningScripts)
+			foreach (Script script in _runningScripts.Where(x => filename.Equals(x.Filename, StringComparison.OrdinalIgnoreCase)))
 			{
-				if (!filename.Equals(script.Filename, StringComparison.OrdinalIgnoreCase))
-				{
-					continue;
-				}
-
 				script.Abort();
 			}
 		}
 		public void AbortAllScriptsExceptConsole()
 		{
-			foreach (Script script in _runningScripts)
+			foreach (Script script in _runningScripts.Where(x => x != Console))
 			{
-				if (!ReferenceEquals(script, Console))
-				{
-					script.Abort();
-				}
+				script.Abort();
 			}
 
 			_scriptTypes.Clear();
-			_runningScripts.Clear();
-			_runningScripts.Add(Console);
+			_runningScripts.RemoveAll(x => x != Console);
 
 			GC.Collect();
 		}
@@ -720,15 +770,7 @@ namespace GTA
 		}
 		public string LookupScriptFilename(Type type)
 		{
-			foreach (var scriptType in _scriptTypes)
-			{
-				if (scriptType.Item2 == type)
-				{
-					return scriptType.Item1;
-				}
-			}
-
-			return string.Empty;
+			return _scriptTypes.FirstOrDefault(x => x.Item2 == type)?.Item1 ?? string.Empty;
 		}
 		public override object InitializeLifetimeService()
 		{
@@ -753,7 +795,7 @@ namespace GTA
 
 		static private string GetScriptSupportURL(Type scriptType)
 		{
-			foreach (ScriptAttributes attribute in scriptType.GetCustomAttributes(typeof(ScriptAttributes), true))
+			foreach (ScriptAttributes attribute in scriptType.GetCustomAttributes<ScriptAttributes>(true))
 			{
 				if (!String.IsNullOrEmpty(attribute.SupportURL))
 				{

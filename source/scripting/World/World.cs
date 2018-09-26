@@ -551,6 +551,8 @@ namespace GTA
 		}
 		/// <summary>
 		/// Gets the height of the ground at a given position.
+		/// Note : If the Vector3 is already below the ground, this will return 0.
+		/// You may want to use the other overloaded function to be safe.
 		/// </summary>
 		/// <param name="position">The position.</param>
 		/// <returns>The height measured in meters</returns>
@@ -1012,6 +1014,22 @@ namespace GTA
 
 			return Function.Call<string>(Hash.GET_STREET_NAME_FROM_HASH_KEY, streetHash);
 		}
+		/// <summary>
+		/// Determines the name of the street which is the closest to the given coordinates.
+		/// </summary>
+		/// <param name="position">The coordinates of the street</param>
+		/// <param name="CrossingRoadName">If the coordinates are on an intersection, the name of the crossing road</param>
+		/// <returns>Returns the name of the street the coords are on</returns>
+		public static string GetStreetName(Vector3 position, out string CrossingRoadName)
+		{
+			int streetHash, crossingHash;
+			unsafe
+			{
+				Function.Call(Hash.GET_STREET_NAME_AT_COORD, position.X, position.Y, position.Z, &streetHash, &crossingHash);
+			}
+			CrossingRoadName = Function.Call<string>(Hash.GET_STREET_NAME_FROM_HASH_KEY, crossingHash);
+			return Function.Call<string>(Hash.GET_STREET_NAME_FROM_HASH_KEY, streetHash);
+		}
 
 		/// <summary>
 		/// Creates a <see cref="Blip"/> at the given position on the map.
@@ -1406,11 +1424,12 @@ namespace GTA
 		/// <summary>
 		/// Determines where the crosshair intersects with the world.
 		/// </summary>
+		/// <param name="intersectOptions">Type of <see cref="IntersectOptions">environment</see> the raycast should intersect with.</param>
 		/// <param name="ignoreEntity">Prevent the raycast detecting a specific <see cref="Entity"/>.</param>
 		/// <returns>A <see cref="RaycastResult"/> containing information about where the crosshair intersects with the world.</returns>
-		public static RaycastResult GetCrosshairCoordinates(Entity ignoreEntity)
+		public static RaycastResult GetCrosshairCoordinates(IntersectOptions intersectOptions = IntersectOptions.Everything, Entity ignoreEntity = null)
 		{
-			return Raycast(GameplayCamera.Position, GameplayCamera.GetOffsetPosition(new Vector3(0f, 1000f, 0f)), IntersectOptions.Everything, ignoreEntity);
+			return Raycast(GameplayCamera.Position, GameplayCamera.GetOffsetPosition(new Vector3(0f, 1000f, 0f)), intersectOptions, ignoreEntity);
 		}
 
 		/// <summary>

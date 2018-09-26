@@ -21,6 +21,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Drawing;
+using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -33,107 +34,43 @@ namespace GTA
 	//Used to describe console args (Needed for creating a Help-func)
 	internal class ConsoleArg
 	{
-		#region Fields
-		string _type;
-		string _name;
-		#endregion
-
 		public ConsoleArg(string type, string name)
 		{
-			this._type = type;
-			this._name = type;
+			Type = type;
+			Name = type;
 		}
 
-		internal string Type
-		{
-			get
-			{
-				return _type;
-			}
-		}
-		internal string Name
-		{
-			get
-			{
-				return _name;
-			}
-		}
+		internal string Type { get; }
+		internal string Name { get; }
 	}
 
 	public class ConsoleCommand : Attribute
 	{
-		#region Fields
-		private string _help;
-		private string _name;
-		private string _namespace;
-		private List<ConsoleArg> _consoleArgs;
-		#endregion
-
-
 		public ConsoleCommand(string help)
 		{
-			this._help = help;
-			this._consoleArgs = new List<ConsoleArg>();
+			Help = help;
+			ConsoleArgs = new List<ConsoleArg>();
 		}
 		public ConsoleCommand() : this("No help text available")
 		{
 		}
 
-		internal string Help
-		{
-			get
-			{
-				return _help;
-			}
-		}
-
-		internal string Name
-		{
-			get
-			{
-				return _name;
-			}
-			set
-			{
-				_name = value;
-			}
-		}
-
-		internal string Namespace
-		{
-			get
-			{
-				return _namespace;
-			}
-			set
-			{
-				_namespace = value;
-			}
-		}
-
-		internal List<ConsoleArg> ConsoleArgs
-		{
-			get
-			{
-				return _consoleArgs;
-			}
-			set
-			{
-				_consoleArgs = value;
-			}
-		}
+		internal string Help { get; set; }
+		internal string Name { get; set; }
+		internal string Namespace { get; set; }
+		internal List<ConsoleArg> ConsoleArgs { get; set; }
 
 		internal string BuildFormattedHelp()
 		{
 			StringBuilder builder = new StringBuilder();
 			builder.Append("~h~" + Name + "~w~(");
 
-			foreach (var arg in _consoleArgs)
+			foreach (var arg in ConsoleArgs)
 			{
 				builder.Append(arg.Type + " " + arg.Name + ",");
 			}
 
-			if (_consoleArgs.Count > 0)
+			if (ConsoleArgs.Count > 0)
 				builder.Length--; //Remove last , if we have >0 Args
 
 			builder.Append(")");
@@ -144,7 +81,6 @@ namespace GTA
 	internal class ConsoleScript : Script
 	{
 		#region StaticFields
-		bool _isOpen;
 		int _page;
 		int _cursorPos;
 		int _commandPos;
@@ -152,6 +88,7 @@ namespace GTA
 		DateTime _lastClosed;
 		LinkedList<string> _lines;
 		List<string> _commandHistory;
+		Regex _getEachWordRegex = new Regex(@"[^\W_]+", RegexOptions.Compiled);
 
 		Task<Assembly> _compilerTask;
 		ConcurrentQueue<string[]> _outputQueue;
@@ -198,7 +135,6 @@ namespace GTA
 			_commands = new Dictionary<String, List<Tuple<ConsoleCommand, MethodInfo>>>();
 
 			_input = "";
-			_isOpen = false;
 			_page = 1;
 			_cursorPos = 0;
 			_commandPos = -1;
@@ -223,13 +159,7 @@ namespace GTA
 			PageUpKey = settings.GetValue<Keys>("Console", "PageUp", Keys.PageUp);
 		}
 
-		internal bool IsOpen
-		{
-			get
-			{
-				return _isOpen;
-			}
-		}
+		internal bool IsOpen { get; private set; }
 
 		[DllImport("user32.dll")]
 		private static extern int ToUnicode(uint virtualKeyCode, uint scanCode, byte[] keyboardState,
@@ -257,14 +187,10 @@ namespace GTA
 
 		private void SetControlsEnabled(bool enabled)
 		{
-			for (int i = 0; i < 338; i++)
+			Native.Function.Call(Native.Hash.DISABLE_ALL_CONTROL_ACTIONS, 0);
+			for (int i = 1; i <= 6; i++)
 			{
-				if (i >= 1 && i <= 6)
-				{
-					continue;
-				}
-
-				Native.Function.Call(Native.Hash.DISABLE_CONTROL_ACTION, 0, i, enabled);
+				Native.Function.Call(Native.Hash.ENABLE_CONTROL_ACTION, 0, i, enabled);
 			}
 		}
 
@@ -299,9 +225,9 @@ namespace GTA
 		{
 			foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public))
 			{
-				foreach (var attribute in method.GetCustomAttributes(typeof(ConsoleCommand), true))
+				foreach (var attribute in method.GetCustomAttributes<ConsoleCommand>(true))
 				{
-					RegisterCommand((ConsoleCommand)(attribute), method, defaultCommands);
+					RegisterCommand(attribute, method, defaultCommands);
 				}
 			}
 		}
@@ -309,9 +235,9 @@ namespace GTA
 		{
 			foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public))
 			{
-				foreach (var attribute in method.GetCustomAttributes(typeof(ConsoleCommand), true))
+				foreach (var attribute in method.GetCustomAttributes<ConsoleCommand>(true))
 				{
-					var command = (ConsoleCommand)(attribute);
+					var command = attribute;
 					command.Namespace = method.DeclaringType.FullName;
 
 					if (_commands.ContainsKey(command.Namespace))
@@ -377,7 +303,7 @@ namespace GTA
 			help.AppendLine("--- Help ---");
 			foreach (var namespaceS in _commands.Keys)
 			{
-				help.AppendLine(String.Format("[{0}]", namespaceS));
+				help.AppendLine($"[{namespaceS}]");
 				foreach (var command in _commands[namespaceS])
 				{
 					var consoleCommand = command.Item1;
@@ -401,7 +327,7 @@ namespace GTA
 		{
 			for (int i = 0; i < msgs.Length; i++)
 			{
-				msgs[i] = String.Format("~c~[{0}] ~w~{1} {2}{3}", DateTime.Now.ToString("HH:mm:ss"), prefix, textColor, msgs[i]); //Add proper styling
+				msgs[i] = $"~c~[{DateTime.Now.ToString("HH:mm:ss")}] ~w~{prefix} {textColor}{msgs[i]}"; //Add proper styling
 			}
 
 			_outputQueue.Enqueue(msgs);
@@ -430,7 +356,7 @@ namespace GTA
 						Type type = compileResult.GetType("ConsoleInput");
 						object result = type.GetMethod("Execute").Invoke(null, null);
 						if (result != null)
-							Info(String.Format("[Return Value: {0}]", result));
+							Info($"[Return Value: {result}]");
 					}
 					ClearInput();
 					_compilerTask = null;
@@ -446,7 +372,7 @@ namespace GTA
 				return;
 			}
 
-			if (!_isOpen)
+			if (!IsOpen)
 				return;
 			if (Native.Function.Call<bool>(Native.Hash._IS_INPUT_DISABLED, 2))
 				SetControlsEnabled(false);
@@ -461,7 +387,7 @@ namespace GTA
 
 			if (now.Millisecond < 500)
 			{
-				float length = GetTextLength(_input.Substring(0, _input.Length - _cursorPos), DefaultScale, DefaultFont);
+				float length = GetTextLength(_input.Substring(0, _cursorPos), DefaultScale, DefaultFont);
 				DrawText(25 + (length * WIDTH) - 4, HEIGHT / 3, "~w~~h~|~w~", DefaultScale, DefaultFont, InputColor);
 			}
 
@@ -485,14 +411,14 @@ namespace GTA
 		{
 			if (e.KeyCode == ToggleKey)
 			{
-				_isOpen = !_isOpen;
+				IsOpen = !IsOpen;
 				SetControlsEnabled(false);
-				if (!_isOpen)
+				if (!IsOpen)
 					_lastClosed = DateTime.UtcNow.AddMilliseconds(200); //Hack so the input gets blocked long enogh
 				return;
 			}
 
-			if (!_isOpen)
+			if (!IsOpen)
 				return;
 
 			if (e.KeyCode == PageUpKey)
@@ -504,6 +430,54 @@ namespace GTA
 			{
 				PageDown();
 				return;
+			}
+			else if (e.Control)
+			{
+				switch (e.KeyCode)
+				{
+					case Keys.Left:
+						BackwardWord();
+						return;
+					case Keys.Right:
+						ForwardWord();
+						return;
+					case Keys.A:
+						MoveCursorToStartOfLine();
+						return;
+					case Keys.B:
+						MoveCursorLeft();
+						return;
+					case Keys.E:
+						MoveCursorToEndOfLine();
+						return;
+					case Keys.F:
+						MoveCursorRight();
+						return;
+					case Keys.L:
+						Clear();
+						return;
+					case Keys.N:
+						GoDownCommandList();
+						return;
+					case Keys.P:
+						GoUpCommandList();
+						return;
+					case Keys.V:
+						PasteClipboard();
+						return;
+				}
+			}
+			else if (e.Alt)
+			{
+				switch (e.KeyCode)
+				{
+					case Keys.B:
+						BackwardWord();
+						return;
+					case Keys.F:
+						ForwardWord();
+						return;
+				}
 			}
 
 			switch (e.KeyCode)
@@ -526,21 +500,11 @@ namespace GTA
 				case Keys.Down:
 					GoDownCommandList();
 					break;
-				case Keys.V:
-					if (e.Control)
-					{
-						PasteClipboard();
-					}
-					else
-					{
-						AddToInput(GetCharsFromKeys(e.KeyCode, e.Shift, e.Alt));
-					}
-					break;
 				case Keys.Enter:
 					ExecuteInput();
 					break;
 				case Keys.Escape:
-					_isOpen = false;
+					IsOpen = false;
 					SetControlsEnabled(false);
 					_lastClosed = DateTime.UtcNow.AddMilliseconds(200); //Hack so the input gets blocked long enogh
 					break;
@@ -557,7 +521,8 @@ namespace GTA
 				return;
 			}
 
-			_input = _input.Insert(_input.Length - _cursorPos, input);
+			_input = _input.Insert(_cursorPos, input);
+			_cursorPos++;
 		}
 		private void AddClipboardContent()
 		{
@@ -598,7 +563,7 @@ namespace GTA
 			}
 			else
 			{
-				Error(String.Format("Couldn't compile input-string: {0}", _input));
+				Error($"Couldn't compile input-string: {_input}");
 
 				StringBuilder errors = new StringBuilder();
 
@@ -651,31 +616,61 @@ namespace GTA
 
 		private void MoveCursorLeft()
 		{
-			if (_cursorPos < _input.Length)
-				_cursorPos++;
-		}
-		private void MoveCursorRight()
-		{
 			if (_cursorPos > 0)
 				_cursorPos--;
 		}
+		private void MoveCursorRight()
+		{
+			if (_cursorPos < _input.Length)
+				_cursorPos++;
+		}
+		private void MoveCursorToStartOfLine()
+		{
+			_cursorPos = 0;
+		}
+		private void MoveCursorToEndOfLine()
+		{
+			_cursorPos = _input.Length;
+		}
+		private void ForwardWord()
+		{
+			Match match = _getEachWordRegex.Match(_input, _cursorPos);
+
+			if (match.Success)
+			{
+				_cursorPos = match.Index + match.Length;
+			}
+			else
+			{
+				_cursorPos = _input.Length;
+			}
+		}
+		private void BackwardWord()
+		{
+			var lastMatch = _getEachWordRegex.Matches(_input).Cast<Match>().Where(x => x.Index < _cursorPos).LastOrDefault();
+
+			if (lastMatch != null)
+			{
+				_cursorPos = lastMatch.Index;
+			}
+			else
+			{
+				_cursorPos = 0;
+			}
+		}
 		private void RemoveCharLeft()
 		{
-			if (_input.Length > 0)
+			if (_input.Length > 0 && _cursorPos > 0)
 			{
-				_input = _input.Remove(_input.Length - _cursorPos - 1, 1);
+				_input = _input.Remove(_cursorPos - 1, 1);
+				_cursorPos--;
 			}
 		}
 		private void RemoveCharRight()
 		{
 			if (_input.Length > 0 && _cursorPos < _input.Length)
 			{
-				_input = _input.Remove(_input.Length - _cursorPos, 1);
-			}
-
-			if (_cursorPos > 0)
-			{
-				_cursorPos--;
+				_input = _input.Remove(_cursorPos, 1);
 			}
 		}
 		private void PageUp()
@@ -724,7 +719,7 @@ namespace GTA
 			Native.Function.Call(Native.Hash.SET_TEXT_FONT, font);
 			Native.Function.Call(Native.Hash.SET_TEXT_SCALE, scale, scale);
 			Native.Function.Call(Native.Hash.SET_TEXT_COLOUR, color.R, color.G, color.B, color.A);
-			Native.Function.Call(Native.Hash.BEGIN_TEXT_COMMAND_DISPLAY_TEXT, "STRING");
+			Native.Function.Call(Native.Hash.BEGIN_TEXT_COMMAND_DISPLAY_TEXT, "CELL_EMAIL_BCON");
 
 			const int maxStringLength = 99;
 

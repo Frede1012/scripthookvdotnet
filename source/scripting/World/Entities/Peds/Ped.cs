@@ -219,6 +219,7 @@ namespace GTA
 				int offset = Game.Version >= GameVersion.v1_0_372_2_Steam ? 0x1474 : 0x1464;
 				offset = Game.Version >= GameVersion.v1_0_877_1_Steam ? 0x14A0 : offset;
 				offset = Game.Version >= GameVersion.v1_0_944_2_Steam ? 0x14B0 : offset;
+				offset = Game.Version >= GameVersion.v1_0_1290_1_Steam ? 0x14B8 : offset;
 
 				return MemoryAccess.ReadFloat(MemoryAddress + offset);
 			}
@@ -519,6 +520,7 @@ namespace GTA
 
 				int offset = (Game.Version >= GameVersion.v1_0_877_1_Steam ? 0x158A : 0x1542);
 				offset = Game.Version >= GameVersion.v1_0_944_2_Steam ? 0x159A : offset;
+				offset = Game.Version >= GameVersion.v1_0_1290_1_Steam ? 0x15A2 : offset;
 
 				int seatIndex = MemoryAccess.ReadSByte(MemoryAddress + offset);
 
@@ -571,6 +573,7 @@ namespace GTA
 		/// <summary>
 		/// Gets or sets the injury health threshold for this <see cref="Ped"/>. 
 		/// The ped is considered injured when its health drops below this value.
+		/// The ped dies on attacks when its health is below this value.
 		/// </summary>
 		/// <value>
 		/// The injury health threshold. Should be below <see cref="Entity.MaxHealth"/>.
@@ -590,6 +593,7 @@ namespace GTA
 				int offset = Game.Version >= GameVersion.v1_0_372_2_Steam ? 0x1480 : 0x1470;
 				offset = Game.Version >= GameVersion.v1_0_877_1_Steam ? 0x14C8 : offset;
 				offset = Game.Version >= GameVersion.v1_0_944_2_Steam ? 0x14D8 : offset;
+				offset = Game.Version >= GameVersion.v1_0_1290_1_Steam ? 0x14E0 : offset;
 
 				return MemoryAccess.ReadFloat(MemoryAddress + offset);
 			}
@@ -603,6 +607,7 @@ namespace GTA
 				int offset = Game.Version >= GameVersion.v1_0_372_2_Steam ? 0x1480 : 0x1470;
 				offset = Game.Version >= GameVersion.v1_0_877_1_Steam ? 0x14C8 : offset;
 				offset = Game.Version >= GameVersion.v1_0_944_2_Steam ? 0x14D8 : offset;
+				offset = Game.Version >= GameVersion.v1_0_1290_1_Steam ? 0x14E0 : offset;
 
 				MemoryAccess.WriteFloat(MemoryAddress + offset, value);
 			}
@@ -630,6 +635,7 @@ namespace GTA
 				int offset = Game.Version >= GameVersion.v1_0_372_2_Steam ? 0x1484 : 0x1474;
 				offset = Game.Version >= GameVersion.v1_0_877_1_Steam ? 0x14CC : offset;
 				offset = Game.Version >= GameVersion.v1_0_944_2_Steam ? 0x14DC : offset;
+				offset = Game.Version >= GameVersion.v1_0_1290_1_Steam ? 0x14E4 : offset;
 
 				return MemoryAccess.ReadFloat(MemoryAddress + offset);
 			}
@@ -643,6 +649,7 @@ namespace GTA
 				int offset = Game.Version >= GameVersion.v1_0_372_2_Steam ? 0x1484 : 0x1474;
 				offset = Game.Version >= GameVersion.v1_0_877_1_Steam ? 0x14CC : offset;
 				offset = Game.Version >= GameVersion.v1_0_944_2_Steam ? 0x14DC : offset;
+				offset = Game.Version >= GameVersion.v1_0_1290_1_Steam ? 0x14E4 : offset;
 
 				MemoryAccess.WriteFloat(MemoryAddress + offset, value);
 			}
@@ -1583,7 +1590,7 @@ namespace GTA
 		/// <returns><c>true</c> if this <see cref="Ped"/> exists; otherwise, <c>false</c></returns>
 		public new bool Exists()
 		{
-			return Function.Call<int>(Hash.GET_ENTITY_TYPE, Handle) == 1;
+			return EntityType == EntityType.Ped;
 		}
 		/// <summary>
 		/// Determines whether the <see cref="Ped"/> exists.
