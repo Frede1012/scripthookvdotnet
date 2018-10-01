@@ -28,6 +28,16 @@ namespace GTA.UI
 			return Function.Call<int>(Hash._DRAW_NOTIFICATION, blinking, true);
 		}
 
+        /// <summary>
+        /// Creates a more advanced (SMS-alike) <see cref="Notification"/> above the minimap showing a sender icon, subject and the message.
+        /// </summary>
+        /// <param name="icon">The notification icon.</param>
+        /// <param name="sender">The sender name.</param>
+        /// <param name="subject">The subject line.</param>
+        /// <param name="message">The message itself.</param>
+        /// <param name="fadeIn">If <c>true</c> the message will fade in.</param>
+        /// <param name="blinking">if set to <c>true</c> the notification will blink.</param>
+        /// <returns>The handle of the <see cref="Notification"/> which can be used to hide it using <see cref="Notification.Hide(int)"/>.</returns>
 		public static int Show(NotificationIcon icon, string sender, string subject, string message, bool fadeIn, bool blinking = false)
 		{
 			Function.Call(Hash._SET_NOTIFICATION_TEXT_ENTRY, "STRING");
